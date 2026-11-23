@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+﻿import { defineConfig } from 'vite';
 
 export default defineConfig({
   base: './',
@@ -7,8 +7,9 @@ export default defineConfig({
     port: 5173
   },
   build: {
-    target: 'es2020',
+    target: 'es2022',
     outDir: 'dist',
     assetsInlineLimit: 4096
   }
 });
+
