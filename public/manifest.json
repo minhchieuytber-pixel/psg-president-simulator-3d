@@ -1,0 +1,42 @@
+{
+  "name": "Football Club President Simulator 3D - PSG",
+  "short_name": "PSG President 3D",
+  "description": "Game mô phỏng quản lý câu lạc bộ bóng đá 3D - Chủ tịch Phạm Minh Chiêu điều hành Paris Saint-Germain.",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#0b1120",
+  "theme_color": "#00205b",
+  "icons": [
+    {
+      "src": "icons/psg-president-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/psg-president-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/psg-president-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icons/psg-president-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    }
+  ],
+  "id": "./",
+  "scope": "./",
+  "display_override": [
+    "fullscreen",
+    "standalone"
+  ],
+  "prefer_related_applications": false
+}

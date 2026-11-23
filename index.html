@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-touch-fullscreen" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="PSG President 3D" />
+  <meta name="description" content="Mô phỏng quản lý Paris Saint-Germain 3D, chơi ngoại tuyến sau lần tải đầu tiên." />
+  <link rel="apple-touch-icon" sizes="180x180" href="./icons/psg-president-180.png" />
+  <meta name="theme-color" content="#00205b" />
+  <link rel="manifest" href="./manifest.json" />
+  <script>
+    // Đăng ký PWA sớm để trình duyệt bắt đầu tải bộ tài nguyên offline.
+    if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js', { scope: './', updateViaCache: 'none' })
+          .then((registration) => {
+            if (navigator.onLine) registration.update().catch(() => {});
+            window.addEventListener('online', () => registration.update().catch(() => {}));
+          })
+          .catch((error) => console.warn('PWA offline registration failed:', error));
+      }, { once: true });
+    }
+  </script>
+  <title>Football Club President Simulator 3D — Paris Saint-Germain</title>
+  <style>
+    :root {
+      --psg-navy: #00205b;
+      --psg-blue: #0f2c59;
+      --psg-red: #da291c;
+      --psg-gold: #d4af37;
+      --bg-glass: rgba(11, 18, 34, 0.80);
+      --border-glass: rgba(255, 255, 255, 0.16);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
+      background: #0b1120; color: var(--text-main);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Segoe UI", Roboto, sans-serif;
+      touch-action: none;
+    }
+    #game-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+    .hidden { display: none !important; }
+
+    /* Tâm ngắm trỏ vật thể góc nhìn thứ nhất */
+    .fp-reticle {
+      position: fixed; left: 50%; top: 50%; width: 7px; height: 7px;
+      margin-left: -3.5px; margin-top: -3.5px; border-radius: 50%; z-index: 15;
+      background: rgba(255, 255, 255, 0.78); border: 1.5px solid rgba(0, 0, 0, 0.55);
+      pointer-events: none;
+    }
+
+    #portrait-warning {
+      display: none; position: fixed; inset: 0; z-index: 999;
+      background: rgba(6, 12, 26, 0.94); backdrop-filter: blur(10px);
+      flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px;
+    }
+    @media (orientation: portrait) and (max-width: 720px) {
+      #portrait-warning:not(.dismissed) { display: flex; }
+    }
+    #portrait-warning h2 { margin: 10px 0 6px; font-size: 20px; color: #fff; }
+    #portrait-warning p { color: var(--text-muted); font-size: 14px; max-width: 300px; margin-bottom: 16px; }
+
+    .top-bar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 20;
+      padding: max(8px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) 8px max(14px, env(safe-area-inset-left));
+      display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: nowrap;
+      background: linear-gradient(180deg, rgba(6,13,28,0.84) 0%, rgba(6,13,28,0) 100%);
+      pointer-events: none;
+    }
+    .top-bar > * { pointer-events: auto; }
+    .club-pill {
+      display: flex; align-items: center; gap: 7px;
+      background: var(--bg-glass); border: 1px solid var(--border-glass);
+      padding: 5px 11px; border-radius: 999px; backdrop-filter: blur(8px);
+      font-size: 11.5px; white-space: nowrap;
+    }
+    .club-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--psg-red); box-shadow: 0 0 8px var(--psg-red); }
+    .hud-metrics { display: flex; align-items: center; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+    .metric-chip {
+      background: var(--bg-glass); border: 1px solid var(--border-glass);
+      padding: 5px 9px; border-radius: 999px; font-size: 11px; white-space: nowrap; backdrop-filter: blur(8px);
+    }
+    .metric-chip b { color: #38bdf8; }
+    .match-alert-chip {
+      background: rgba(185, 28, 28, 0.9); color: #fff; border: 1px solid rgba(255,255,255,0.32);
+      padding: 5px 10px; border-radius: 999px; font-size: 11px; font-weight: 700;
+      cursor: pointer; white-space: nowrap;
+    }
+    .top-actions { display: flex; align-items: center; gap: 6px; }
+    .icon-btn {
+      background: var(--bg-glass); color: #fff; border: 1px solid var(--border-glass);
+      padding: 6px 10px; border-radius: 999px; font-size: 11px; font-weight: 600;
+      cursor: pointer; white-space: nowrap; backdrop-filter: blur(8px);
+    }
+    .icon-btn.accent { background: var(--psg-red); border-color: rgba(255,255,255,0.25); }
+
+    /* Joystick cảm ứng góc dưới trái */
+    #joy-zone {
+      position: fixed;
+      left: max(18px, env(safe-area-inset-left));
+      bottom: max(18px, env(safe-area-inset-bottom));
+      width: 110px; height: 110px; border-radius: 50%; z-index: 25;
+      background: rgba(15, 23, 42, 0.45); border: 2px solid rgba(255, 255, 255, 0.24);
+      display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px);
+    }
+    #joy-knob {
+      width: 44px; height: 44px; border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #3b82f6, #00205b);
+      border: 2px solid rgba(255,255,255,0.65); box-shadow: 0 4px 14px rgba(0,0,0,0.45);
+      pointer-events: none; transition: transform 0.04s linear;
+    }
+
+    /* Góc dưới phải tối giản: CHỈ giữ Điện thoại & Chạy, nút Tương tác chỉ hiện khi trỏ vào vật thể */
+    .right-controls {
+      position: fixed;
+      right: max(18px, env(safe-area-inset-right));
+      bottom: max(18px, env(safe-area-inset-bottom));
+      z-index: 25; display: flex; flex-direction: column; align-items: flex-end; gap: 10px;
+    }
+    #interact-hint {
+      background: rgba(8, 15, 32, 0.9); border: 1px solid var(--psg-gold);
+      color: #fef3c7; padding: 4px 12px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+      opacity: 0; transform: translateY(6px); pointer-events: none; transition: all 0.16s ease;
+      white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis;
+    }
+    #interact-hint.show { opacity: 1; transform: translateY(0); }
+    .circle-row { display: flex; align-items: center; gap: 10px; }
+    .circle-btn {
+      position: relative; width: 48px; height: 48px; border-radius: 50%;
+      border: 1.5px solid rgba(255,255,255,0.24); background: var(--bg-glass);
+      color: #fff; font-size: 21px; cursor: pointer; backdrop-filter: blur(10px);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.4); transition: transform 0.14s ease, border-color 0.15s ease;
+      padding: 0;
+    }
+    .circle-btn:active { transform: scale(0.91); }
+    .circle-btn.active { background: #1d4ed8; border-color: #93c5fd; box-shadow: 0 0 14px rgba(59,130,246,0.55); }
+    .circle-btn.interact-main { width: 54px; height: 54px; font-size: 23px; }
+    .circle-btn.ready {
+      background: linear-gradient(135deg, #004170, #00205b);
+      border-color: var(--psg-gold); box-shadow: 0 0 18px rgba(212,175,55,0.68);
+    }
+    #phone-badge {
+      position: absolute; top: -3px; right: -3px; width: 18px; height: 18px; border-radius: 50%;
+      background: var(--psg-red); color: #fff; font-size: 10px; font-weight: 700;
+      display: none; align-items: center; justify-content: center; border: 1.5px solid #fff;
+    }
+
+    /* HUD Trận đấu 3D */
+    #match-hud {
+      position: fixed; inset: 0; z-index: 30; pointer-events: none;
+      display: flex; flex-direction: column; justify-content: space-between;
+      padding: max(10px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+    }
+    #match-hud > * { pointer-events: auto; }
+    .scoreboard {
+      align-self: center; background: rgba(7, 15, 32, 0.9); border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 14px; padding: 8px 18px; text-align: center; backdrop-filter: blur(8px);
+    }
+    .scoreboard .m-score { font-size: 17px; font-weight: 800; }
+    .scoreboard .m-meta { font-size: 11px; color: #93c5fd; margin-top: 2px; }
+    .match-bottom { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+    .commentary-box {
+      max-width: 380px; background: rgba(7,15,32,0.82); border: 1px solid var(--border-glass);
+      border-radius: 12px; padding: 8px 10px; font-size: 11px; line-height: 1.45; max-height: 92px; overflow-y: auto;
+    }
+    .match-controls { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+    .quick-row { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+
+    /* Modal & macOS Desktop */
+    #modal-backdrop {
+      position: fixed; inset: 0; z-index: 60; background: rgba(3, 8, 20, 0.72);
+      backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center;
+      padding: max(8px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+    }
+    #modal-backdrop.open { display: flex; }
+    .modal-box {
+      width: min(580px, 94vw); max-height: 88vh; background: #0f172a;
+      border: 1px solid rgba(255,255,255,0.18); border-radius: 16px;
+      display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,0.65);
+    }
+    .modal-box.wide { width: min(920px, 95vw); }
+    .modal-box.macos-shell {
+      width: min(1020px, 96vw); height: min(640px, 92vh); max-height: 94vh;
+      border-radius: 18px; border: 1px solid rgba(255,255,255,0.24); background: transparent;
+    }
+    .modal-head {
+      padding: 11px 16px; background: linear-gradient(90deg, #00205b, #111827);
+      border-bottom: 2px solid var(--psg-red); display: flex; justify-content: space-between; align-items: center;
+    }
+    .modal-head span { font-weight: 700; font-size: 13px; }
+    #modal-close {
+      background: rgba(255,255,255,0.12); color: #fff; border: none; border-radius: 8px;
+      width: 32px; height: 32px; font-size: 16px; cursor: pointer;
+    }
+    #modal-body { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; font-size: 12.5px; user-select: text; }
+
+    .macos-desktop {
+      width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: space-between;
+      background: radial-gradient(circle at 20% 20%, #1d4ed8 0%, #0b1b3a 42%, #1e1b4b 78%, #090d1a 100%);
+      position: relative; overflow: hidden;
+    }
+    .macos-menubar {
+      height: 28px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between;
+      background: rgba(15, 23, 42, 0.74); backdrop-filter: blur(18px);
+      border-bottom: 1px solid rgba(255,255,255,0.12); font-size: 11.5px; color: #f8fafc; flex-shrink: 0;
+    }
+    .mac-menu-left, .mac-menu-right { display: flex; align-items: center; gap: 11px; white-space: nowrap; }
+    .mac-apple { font-size: 14px; }
+    .mac-menu-item { color: rgba(248,250,252,0.78); font-size: 11px; }
+    .mac-exit-btn {
+      background: rgba(239,68,68,0.85); color: #fff; border: none; border-radius: 6px;
+      padding: 2px 8px; font-size: 10.5px; font-weight: 700; cursor: pointer;
+    }
+    .macos-workspace { flex: 1; min-height: 0; padding: 10px 14px 6px; display: flex; align-items: center; justify-content: center; }
+    .macos-desktop.maximized .macos-workspace { padding: 4px 6px 4px; }
+    .macos-desktop-hint { text-align: center; padding: 24px; }
+    .mac-desktop-badge { display: inline-block; padding: 6px 14px; border-radius: 999px; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.22); font-weight: 700; font-size: 12px; margin-bottom: 8px; }
+    .macos-window {
+      width: 100%; height: 100%; border-radius: 13px; overflow: hidden;
+      background: rgba(15, 23, 42, 0.90); backdrop-filter: blur(22px);
+      border: 1px solid rgba(255,255,255,0.2); box-shadow: 0 22px 50px rgba(0,0,0,0.55);
+      display: flex; flex-direction: column;
+    }
+    .macos-titlebar {
+      height: 36px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between;
+      background: rgba(30, 41, 59, 0.88); border-bottom: 1px solid rgba(255,255,255,0.1); flex-shrink: 0;
+    }
+    .traffic-lights { display: flex; gap: 7px; align-items: center; }
+    .tl { width: 12px; height: 12px; border-radius: 50%; border: none; cursor: pointer; padding: 0; }
+    .tl.red { background: #ff5f57; } .tl.yellow { background: #febc2e; } .tl.green { background: #28c840; }
+    .macos-win-title { font-size: 12px; font-weight: 600; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .macos-body { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+    .macos-sidebar {
+      width: 162px; flex-shrink: 0; background: rgba(15, 23, 42, 0.65);
+      border-right: 1px solid rgba(255,255,255,0.09); padding: 8px 6px; overflow-y: auto;
+      display: flex; flex-direction: column; gap: 3px;
+    }
+    @media (max-width: 680px) { .macos-sidebar { display: none; } }
+    .mac-side-item {
+      display: flex; align-items: center; gap: 7px; width: 100%; text-align: left;
+      background: transparent; color: #cbd5e1; border: none; border-radius: 8px;
+      padding: 6px 9px; font-size: 11.5px; font-weight: 500; cursor: pointer;
+    }
+    .mac-side-item.active { background: rgba(37, 99, 235, 0.42); color: #fff; font-weight: 600; }
+    .macos-main { flex: 1; min-width: 0; padding: 10px 12px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    .macos-dock-wrap { display: flex; justify-content: center; padding: 4px 10px 8px; flex-shrink: 0; }
+    .macos-dock {
+      display: flex; align-items: center; gap: 7px; padding: 6px 10px;
+      background: rgba(255, 255, 255, 0.14); backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.24); border-radius: 18px;
+      overflow-x: auto; max-width: 100%; scrollbar-width: none;
+    }
+    .dock-item { background: transparent; border: none; padding: 0; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 3px; transition: transform 0.16s ease; }
+    .dock-item:hover, .dock-item:active { transform: translateY(-4px) scale(1.12); }
+    .dock-icon { width: 35px; height: 35px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 17px; box-shadow: 0 4px 10px rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.22); }
+    .dock-dot { width: 4px; height: 4px; border-radius: 50%; background: transparent; }
+    .dock-item.active .dock-dot { background: #fff; }
+
+    .tab-strip { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--border-glass); }
+    .tab-btn { background: #1e293b; color: #cbd5e1; border: 1px solid transparent; border-radius: 9px; padding: 6px 11px; font-size: 11.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    .tab-btn.active { background: var(--psg-navy); color: #fff; border-color: var(--psg-gold); }
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(125px, 1fr)); gap: 8px; margin-bottom: 10px; }
+    .kpi-card { background: rgba(30,41,59,0.75); border: 1px solid var(--border-glass); border-radius: 11px; padding: 9px 11px; }
+    .kpi-card span { display: block; font-size: 11px; color: var(--text-muted); }
+    .kpi-card strong { font-size: 15.5px; color: #fff; }
+    .kpi-mini { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11.5px; color: #cbd5e1; }
+    .card-item { background: rgba(23,32,51,0.85); border: 1px solid var(--border-glass); border-radius: 11px; padding: 10px 12px; margin-bottom: 8px; }
+    .card-item.urgent { border-left: 3px solid var(--psg-red); }
+    .card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .card-sub { font-weight: 600; color: #93c5fd; margin-bottom: 3px; }
+    .card-item p { margin: 3px 0; color: #e2e8f0; line-height: 1.45; }
+    .muted { color: var(--text-muted); font-size: 11.5px; }
+    .proposal-txt { color: #fde68a !important; font-size: 12px; }
+    .section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #93c5fd; margin: 10px 0 6px; }
+    .scroll-list { max-height: 44vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(195px, 1fr)); gap: 8px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+    .btn-row { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 6px; }
+    .btn-primary, .btn-secondary, .btn-accent, .btn-danger, .btn-xs { border: none; border-radius: 9px; padding: 7px 11px; font-size: 12px; font-weight: 600; cursor: pointer; color: #fff; }
+    .btn-primary { background: #1d4ed8; } .btn-accent { background: #b45309; } .btn-secondary { background: #334155; } .btn-danger { background: #b91c1c; } .btn-xs { padding: 5px 8px; font-size: 11px; background: #2563eb; }
+    .tag { background: #1e3a8a; color: #dbeafe; padding: 2px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 600; }
+    .tag.ok { background: #14532d; color: #bbf7d0; } .tag.bad { background: #7f1d1d; color: #fecaca; }
+    .dialogue-bubble { background: #0b2545; border-left: 3px solid var(--psg-gold); padding: 10px 12px; border-radius: 8px; margin: 8px 0; font-style: italic; line-height: 1.5; }
+    .mem-list { margin: 4px 0 0 18px; padding: 0; color: var(--text-muted); font-size: 11.5px; }
+    .vote-bar { background: #1e293b; padding: 8px 12px; border-radius: 9px; text-align: center; margin: 6px 0; font-size: 12px; }
+    .filter-bar { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 8px; }
+    .input-ctrl { background: #1e293b; color: #fff; border: 1px solid var(--border-glass); border-radius: 8px; padding: 7px 10px; font-size: 12px; flex: 1; min-width: 130px; }
+    .form-row { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+    .table-wrap { max-height: 44vh; overflow: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--border-glass); border-radius: 10px; }
+    .data-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+    .data-table th, .data-table td { padding: 7px 8px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.08); white-space: nowrap; }
+    .data-table th { background: #1e293b; position: sticky; top: 0; color: #93c5fd; }
+    .highlight-row { background: rgba(0, 65, 112, 0.45); }
+    .call-card { text-align: center; padding: 10px; }
+    .call-pulse { font-size: 38px; margin-bottom: 6px; }
+    .call-text { background: #1e293b; padding: 12px; border-radius: 10px; line-height: 1.5; margin: 10px 0; }
+    .phone-quick-actions { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 10px; }
+
+    .toast-box {
+      position: fixed; top: max(52px, calc(env(safe-area-inset-top) + 44px)); left: 50%; transform: translateX(-50%) translateY(-14px);
+      z-index: 90; background: rgba(15, 23, 42, 0.94); border: 1px solid var(--psg-gold);
+      padding: 7px 14px; border-radius: 999px; font-size: 12px; font-weight: 600;
+      opacity: 0; pointer-events: none; transition: all 0.25s ease; max-width: 88vw; text-align: center;
+    }
+    .toast-box.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .toast-box.error { border-color: #ef4444; color: #fecaca; }
+    .toast-box.success { border-color: #22c55e; color: #dcfce7; }
+
+    /* Sơ đồ đội hình sân cỏ bằng áo đấu thật có tên, số áo & chữ C */
+    .formation-layout { display: grid; grid-template-columns: minmax(290px, 1.25fr) minmax(240px, 1fr); gap: 10px; align-items: start; }
+    @media (max-width: 720px) { .formation-layout { grid-template-columns: 1fr; } }
+    .pitch-container { overflow: auto; border-radius: 12px; border: 1px solid rgba(255,255,255,0.18); background: #0d3b1e; padding: 6px; }
+    .pitch-board {
+      position: relative; width: 100%; min-height: 365px; border-radius: 10px;
+      background: repeating-linear-gradient(180deg, #1f6f35 0px, #1f6f35 36px, #195d2c 36px, #195d2c 72px);
+      border: 2px solid rgba(255,255,255,0.82); overflow: hidden;
+    }
+    .pitch-midline { position: absolute; left: 0; right: 0; top: 50%; height: 2px; background: rgba(255,255,255,0.65); }
+    .pitch-circle { position: absolute; left: 50%; top: 50%; width: 72px; height: 72px; margin: -36px 0 0 -36px; border: 2px solid rgba(255,255,255,0.65); border-radius: 50%; }
+    .pitch-box-top { position: absolute; left: 24%; right: 24%; top: 0; height: 52px; border: 2px solid rgba(255,255,255,0.65); border-top: none; }
+    .pitch-box-bot { position: absolute; left: 24%; right: 24%; bottom: 0; height: 52px; border: 2px solid rgba(255,255,255,0.65); border-bottom: none; }
+    .pitch-jersey {
+      position: absolute; transform: translate(-50%, -50%); background: transparent; border: none; padding: 2px;
+      display: flex; flex-direction: column; align-items: center; cursor: pointer; z-index: 4; transition: transform 0.14s ease;
+    }
+    .pitch-jersey:hover, .pitch-jersey.selected { transform: translate(-50%, -50%) scale(1.14); z-index: 6; }
+    .pitch-jersey.selected .jersey-svg { filter: drop-shadow(0 0 8px #facc15); }
+    .jersey-svg { width: 38px; height: 37px; filter: drop-shadow(0 3px 5px rgba(0,0,0,0.55)); }
+    .cap-badge {
+      position: absolute; top: -2px; right: 0px; width: 15px; height: 15px; border-radius: 50%;
+      background: #facc15; color: #0f172a; font-size: 9.5px; font-weight: 900;
+      display: flex; align-items: center; justify-content: center; border: 1.5px solid #0f172a;
+    }
+    .jersey-name {
+      margin-top: 1px; background: rgba(6, 13, 28, 0.88); color: #fff; padding: 1px 5px;
+      border-radius: 4px; font-size: 9.5px; font-weight: 700; white-space: nowrap; max-width: 78px; overflow: hidden; text-overflow: ellipsis;
+    }
+    .jersey-pos { font-size: 8.5px; color: #fde68a; font-weight: 700; text-shadow: 0 1px 2px #000; }
+  </style>
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+
+  <div id="portrait-warning">
+    <div style="font-size:44px;">📱↻</div>
+    <h2>Xoay ngang iPhone để chơi tốt nhất</h2>
+    <p>Football Club President Simulator 3D được thiết kế tối ưu cho chế độ màn hình ngang (Landscape).</p>
+    <button class="btn-primary" id="btn-dismiss-rotate">Tiếp tục xem tạm ở chế độ hiện tại</button>
+  </div>
+
+  <!-- HUD Khám phá Trụ sở PSG 3D -->
+  <div id="campus-hud">
+    <div class="fp-reticle"></div>
+    <div class="top-bar">
+      <div class="club-pill">
+        <span class="club-dot"></span>
+        <span><b>PSG</b> · Phạm Minh Chiêu</span>
+      </div>
+      <div class="hud-metrics">
+        <div class="metric-chip" id="hud-season">2026/27 · T1</div>
+        <div class="metric-chip" id="hud-clock">09:15 · ⚽ Tập luyện</div>
+        <div class="metric-chip"><b id="hud-budget">€245.0M</b></div>
+        <button class="match-alert-chip" id="hud-match-alert" title="Bấm để ra sân Parc des Princes">⚽ Tuần 1: Chưa đá</button>
+        <div class="metric-chip" id="hud-fps">60 FPS</div>
+      </div>
+      <div class="top-actions">
+        <button class="icon-btn" id="btn-quality" title="Chất lượng đồ họa">Medium</button>
+        <button class="icon-btn" id="btn-mute" title="Bật / Tắt âm thanh">🔊</button>
+        <button class="icon-btn accent" id="btn-next-week" title="Qua tuần mới">⏭️</button>
+      </div>
+    </div>
+
+    <!-- Joystick cảm ứng góc dưới trái -->
+    <div id="joy-zone" aria-label="Joystick di chuyển"><div id="joy-knob"></div></div>
+
+    <!-- Góc dưới phải tối giản: CHỈ giữ Điện thoại & Chạy; nút Tương tác chỉ hiện khi trỏ vào vật thể -->
+    <div class="right-controls">
+      <div id="interact-hint"></div>
+      <div class="circle-row">
+        <button class="circle-btn interact-main hidden" id="btn-interact" title="Tương tác" aria-label="Tương tác">✋</button>
+        <button class="circle-btn" id="btn-sprint" title="Chạy nhanh" aria-label="Chạy nhanh">🏃</button>
+        <button class="circle-btn" id="btn-phone" title="Điện thoại Chủ tịch" aria-label="Điện thoại">📱<span id="phone-badge">3</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- HUD Trận đấu 3D Parc des Princes -->
+  <div id="match-hud" class="hidden">
+    <div class="scoreboard">
+      <div class="m-meta" id="m-comp">Ligue 1 · Vòng 1</div>
+      <div class="m-score" id="m-score">Paris Saint-Germain 0 - 0 Đối thủ</div>
+      <div class="m-meta"><b id="m-min">0'</b> · <span id="m-stats">xG: 0.00-0.00 · Kiểm soát: 52%</span></div>
+      <div style="height:5px;background:rgba(255,255,255,0.16);border-radius:99px;overflow:hidden;margin-top:5px;"><div id="m-mom-fill" style="height:100%;width:52%;background:linear-gradient(90deg,#2563eb,#da291c);transition:width 0.3s;"></div></div>
+    </div>
+    <div class="match-bottom">
+      <div class="commentary-box" id="m-commentary"></div>
+      <div class="match-controls">
+        <div class="quick-row">
+          <button class="icon-btn" data-cam="broadcast">🎥 Truyền hình</button>
+          <button class="icon-btn" data-cam="wide">🏟️ Toàn sân</button>
+          <button class="icon-btn" data-cam="tactical">🧭 Chiến thuật</button>
+          <button class="icon-btn" data-cam="player">🏃 Cầu thủ</button>
+          <button class="icon-btn" data-cam="vip">👑 Khán đài VIP</button>
+        </div>
+        <div class="quick-row">
+          <button class="icon-btn" data-tactic="attacking">⚔️ Tấn công</button>
+          <button class="icon-btn" data-tactic="balanced">⚖️ Cân bằng</button>
+          <button class="icon-btn" data-tactic="defensive">🛡️ Phòng ngự</button>
+          <button class="icon-btn" id="btn-match-stats">📊 Thống kê</button>
+          <button class="icon-btn" id="btn-match-replay">🔁 Replay</button>
+          <button class="icon-btn" id="btn-match-sub">🔄 Thay người</button>
+          <button class="icon-btn" id="btn-match-speed">▶️ 1x</button>
+          <button class="icon-btn" id="btn-match-pause">⏸️ Tạm dừng</button>
+          <button class="icon-btn accent" id="btn-match-exit">🏢 Về Trụ sở</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal / macOS Desktop -->
+  <div id="modal-backdrop">
+    <div class="modal-box" id="modal-box">
+      <div class="modal-head" id="modal-head-bar">
+        <span id="modal-title">PSG EXECUTIVE OS</span>
+        <button id="modal-close" aria-label="Đóng">✕</button>
+      </div>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+
+  <div id="toast-box" class="toast-box"></div>
+  <script type="module" src="./src/bootstrap.js"></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#00205b"/>
+  <circle cx="256" cy="256" r="196" fill="#003876" stroke="#ffffff" stroke-width="14"/>
+  <polygon points="256,118 308,334 256,288 204,334" fill="#da291c"/>
+  <circle cx="256" cy="316" r="22" fill="#d4af37"/>
+  <text x="256" y="102" font-family="Arial,sans-serif" font-size="42" font-weight="bold" fill="#ffffff" text-anchor="middle">PARIS</text>
+</svg>
